@@ -76,11 +76,11 @@ app.post(`${BASE}/api/passkey/register-verify`, requireAuth, async (req, res) =>
       expectedOrigin: RP_ORIGIN, expectedRPID: RP_ID
     });
     if (verification.verified && verification.registrationInfo) {
-      const { credential } = verification.registrationInfo;
+      const ri = verification.registrationInfo;
       db.savePasskey(req.session.user.id,
-        Buffer.from(credential.id).toString('base64url'),
-        Buffer.from(credential.publicKey).toString('base64'),
-        credential.counter,
+        ri.credentialID,
+        Buffer.from(ri.credentialPublicKey).toString('base64'),
+        ri.counter,
         req.body.response?.transports || []);
       res.json({ success: true });
     } else {

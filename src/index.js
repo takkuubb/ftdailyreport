@@ -223,7 +223,13 @@ app.get(`${BASE}/api/admin/csv`, requireAuth, requireAdmin, (req, res) => {
     return parts.join('/');
   }
 
-  const csvRows = rows.map(r => {
+  // 工事ｺｰﾄﾞ枝番が空白のものは除外
+  const filtered = rows.filter(r => {
+    const [, branch] = splitJobCode(r.job_code);
+    return branch !== '';
+  });
+
+  const csvRows = filtered.map(r => {
     const [jobMain, jobBranch] = splitJobCode(r.job_code);
     return [
       '',                        // 伝票番号

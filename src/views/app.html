@@ -550,6 +550,7 @@ function bufferToBase64url(b){const a=new Uint8Array(b);let s='';a.forEach(v=>s+
 
 // === Settings Modal ===
 function showSettings(){
+  const hasPasskeySupport=window.PublicKeyCredential;
   document.getElementById('modalContainer').innerHTML=`
     <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
       <div class="modal-content">
@@ -559,10 +560,42 @@ function showSettings(){
           <div class="flex items-center justify-between py-2 border-b"><span class="text-sm">メール</span><span class="text-sm text-gray-600">${currentUser?.email}</span></div>
           <div class="flex items-center justify-between py-2 border-b"><span class="text-sm">権限</span><span class="text-sm">${currentUser?.role==='admin'?'管理者':'報告者'}</span></div>
         </div>
+        ${hasPasskeySupport?`
+        <div class="border-t mt-4 pt-4">
+          <h4 class="text-sm font-bold text-gray-700 mb-2">🔐 パスキー</h4>
+          <p class="text-xs text-gray-500 mb-3">Face ID / Touch ID / 指紋認証でログインできるようになります</p>
+          <button onclick="closeModal();registerPasskeyFromSettings()" class="btn btn-primary w-full"><i class="fas fa-fingerprint mr-2"></i>パスキーを登録</button>
+        </div>`:''}
         <button onclick="logout()" class="btn btn-danger w-full mt-4"><i class="fas fa-sign-out-alt mr-2"></i>ログアウト</button>
         <button onclick="closeModal()" class="btn btn-outline w-full mt-2">閉じる</button>
       </div>
     </div>`;
+}
+
+async function registerPasskeyFromSettings(){
+  try{
+    if(!window.PublicKeyCredential){toast('このブラウザはパスキー非対応');return}
+    const optRes=await fetch(B+'/api/passkey/register-options',{method:'POST',headers:{'Content-Type':'application/json'}});
+    const options=await optRes.json();
+    options.challenge=base64urlToBuffer(options.challenge);
+    options.user.id=base64urlToBuffer(options.user.id);
+    if(options.excludeCredentials)options.excludeCredentials=options.excludeCredentials.map(c=>({...c,id:base64urlToBuffer(c.id)}));
+    const credential=await navigator.credentials.create({publicKey:options});
+    const body={
+      id:credential.id,rawId:bufferToBase64url(credential.rawId),type:credential.type,
+      response:{clientDataJSON:bufferToBase64url(credential.response.clientDataJSON),
+        attestationObject:bufferToBase64url(credential.response.attestationObject),
+        transports:credential.response.getTransports?.()},
+      clientExtensionResults:credential.getClientExtensionResults()
+    };
+    const r=await fetch(B+'/api/passkey/register-verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.success)toast('パスキーを登録しました ✅');
+    else toast(d.error||'登録失敗');
+  }catch(e){
+    if(e.name==='NotAllowedError')toast('パスキー登録がキャンセルされました');
+    else toast('パスキーエラー: '+e.message);
+  }
 }
 
 async function logout(){

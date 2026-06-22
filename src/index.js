@@ -272,6 +272,19 @@ app.get(`${BASE}/api/admin/csv`, requireAuth, requireAdmin, (req, res) => {
   res.send('\ufeff' + csv);
 });
 
+// === Admin: Report (all reports with filters) ===
+app.get(`${BASE}/api/admin/reports`, requireAuth, requireAdmin, (req, res) => {
+  const filters = {
+    start: req.query.start || '', end: req.query.end || '',
+    user_id: req.query.user_id || '', status: req.query.status || '',
+    job_code: req.query.job_code || '', work_factory: req.query.work_factory || '',
+    work_office: req.query.work_office || ''
+  };
+  const reports = db.listAllReports(filters);
+  const stats = db.getReportStats(filters);
+  res.json({ reports, stats });
+});
+
 // === Admin: Users ===
 app.get(`${BASE}/api/admin/users`, requireAuth, requireAdmin, (req, res) => res.json(db.listUsers()));
 app.post(`${BASE}/api/admin/users`, requireAuth, requireAdmin, (req, res) => {

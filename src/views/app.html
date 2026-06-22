@@ -52,6 +52,7 @@ select.input{appearance:none;background:url("data:image/svg+xml,%3Csvg xmlns='ht
 <div id="page-report" class="page p-4 max-w-lg mx-auto"></div>
 <div id="page-history" class="page p-4 max-w-lg mx-auto hidden"></div>
 <div id="page-pending" class="page p-4 max-w-lg mx-auto hidden"></div>
+<div id="page-admin-report" class="page p-4 max-w-4xl mx-auto hidden"></div>
 <div id="page-admin" class="page p-4 max-w-lg mx-auto hidden"></div>
 
 <!-- Bottom Nav -->
@@ -64,6 +65,9 @@ select.input{appearance:none;background:url("data:image/svg+xml,%3Csvg xmlns='ht
   </div>
   <div class="nav-item" data-page="pending" onclick="showPage('pending')" id="navPending" style="display:none">
     <div class="relative"><i class="fas fa-check-circle"></i><span class="badge" id="pendingBadge">0</span></div><span>未確認</span>
+  </div>
+  <div class="nav-item" data-page="admin-report" onclick="showPage('admin-report')" id="navReport" style="display:none">
+    <i class="fas fa-chart-bar"></i><span>レポート</span>
   </div>
   <div class="nav-item" data-page="admin" onclick="showPage('admin')" id="navAdmin" style="display:none">
     <i class="fas fa-cog"></i><span>管理</span>
@@ -96,6 +100,7 @@ function showPage(p){
   if(p==='report')renderReportForm();
   else if(p==='history')loadHistory();
   else if(p==='pending')loadPending();
+  else if(p==='admin-report')loadAdminReport();
   else if(p==='admin')renderAdmin();
 }
 
@@ -332,6 +337,91 @@ async function updatePendingBadge(){
   if(currentUser?.role!=='admin')return;
   const reports=await api('/api/admin/pending');
   if(reports)document.getElementById('pendingBadge').textContent=reports.length;
+}
+
+// === Admin Report ===
+let reportUsersLoaded=false;
+async function loadAdminReport(){
+  const el=document.getElementById('page-admin-report');
+  if(!reportUsersLoaded){
+    // 初回: フィルターUIを構築
+    const users=await api('/api/admin/users');
+    const userOpts=users?users.filter(u=>u.active).map(u=>`<option value="${u.id}">${u.display_name}</option>`).join(''):'';
+    const now=new Date(), y=now.getFullYear(), m=String(now.getMonth()+1).padStart(2,'0');
+    const monthStart=`${y}-${m}-01`;
+    el.innerHTML=`
+      <h2 class="text-lg font-bold text-gray-800 mb-3">📊 報告レポート</h2>
+      <div class="card mb-3">
+        <div class="flex flex-wrap gap-2 items-end">
+          <div><label class="text-xs text-gray-500">開始日</label><input type="date" id="arStart" class="input text-sm" value="${monthStart}" style="min-height:40px"></div>
+          <div><label class="text-xs text-gray-500">終了日</label><input type="date" id="arEnd" class="input text-sm" value="${today()}" style="min-height:40px"></div>
+          <div><label class="text-xs text-gray-500">報告者</label><select id="arUser" class="input text-sm" style="min-height:40px"><option value="">全て</option>${userOpts}</select></div>
+          <div><label class="text-xs text-gray-500">ステータス</label><select id="arStatus" class="input text-sm" style="min-height:40px"><option value="">全て</option><option value="pending">未確認</option><option value="approved">承認済</option></select></div>
+          <div><label class="text-xs text-gray-500">工番</label><input type="text" id="arJob" class="input text-sm" placeholder="工番検索..." style="min-height:40px;width:100px"></div>
+          <div><label class="text-xs text-gray-500">作業（工場）</label><select id="arFactory" class="input text-sm" style="min-height:40px"><option value="">全て</option>${WORK_FACTORY.map(w=>'<option value="'+w+'">'+w+'</option>').join('')}</select></div>
+          <div><label class="text-xs text-gray-500">作業（営業）</label><select id="arOffice" class="input text-sm" style="min-height:40px"><option value="">全て</option>${WORK_OFFICE.map(w=>'<option value="'+w+'">'+w+'</option>').join('')}</select></div>
+          <button onclick="fetchAdminReport()" class="btn btn-primary text-sm px-4" style="min-height:40px"><i class="fas fa-search mr-1"></i>検索</button>
+        </div>
+      </div>
+      <div id="arStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3"></div>
+      <div id="arTable" class="card"></div>
+    `;
+    reportUsersLoaded=true;
+  }
+  fetchAdminReport();
+}
+
+async function fetchAdminReport(){
+  const params=new URLSearchParams();
+  const s=document.getElementById('arStart')?.value; if(s)params.set('start',s);
+  const e=document.getElementById('arEnd')?.value; if(e)params.set('end',e);
+  const u=document.getElementById('arUser')?.value; if(u)params.set('user_id',u);
+  const st=document.getElementById('arStatus')?.value; if(st)params.set('status',st);
+  const j=document.getElementById('arJob')?.value; if(j)params.set('job_code',j);
+  const wf=document.getElementById('arFactory')?.value; if(wf)params.set('work_factory',wf);
+  const wo=document.getElementById('arOffice')?.value; if(wo)params.set('work_office',wo);
+
+  const data=await api('/api/admin/reports?'+params);
+  if(!data)return;
+  const{reports,stats}=data;
+
+  // Stats cards
+  document.getElementById('arStats').innerHTML=`
+    <div class="card"><p class="text-xs text-gray-500">総件数</p><p class="text-xl font-bold">${stats.total||0}</p></div>
+    <div class="card"><p class="text-xs text-gray-500">承認済 / 未確認</p><p class="text-xl font-bold"><span class="text-green-600">${stats.approved||0}</span> / <span class="text-yellow-600">${stats.pending||0}</span></p></div>
+    <div class="card"><p class="text-xs text-gray-500">合計勤怠（定時/残業）</p><p class="text-xl font-bold">${(stats.total_att1||0).toFixed(1)}h / ${(stats.total_att2||0).toFixed(1)}h</p></div>
+    <div class="card"><p class="text-xs text-gray-500">報告者数 / 日数</p><p class="text-xl font-bold">${stats.reporter_count||0}名 / ${stats.date_count||0}日</p></div>
+  `;
+
+  // Table
+  if(!reports||!reports.length){
+    document.getElementById('arTable').innerHTML='<p class="text-gray-500 text-center py-8">該当する日報がありません</p>';
+    return;
+  }
+  let h='<div style="overflow-x:auto"><table class="w-full text-xs"><thead><tr class="bg-gray-800 text-white">';
+  h+='<th class="px-2 py-2 text-left">日付</th><th class="px-2 py-2 text-left">報告者</th><th class="px-2 py-2 text-left">工番</th>';
+  h+='<th class="px-2 py-2 text-left">作業（工場）</th><th class="px-2 py-2 text-left">作業（営業）</th>';
+  h+='<th class="px-2 py-2 text-right">定時</th><th class="px-2 py-2 text-right">残業</th>';
+  h+='<th class="px-2 py-2 text-left">図面</th><th class="px-2 py-2 text-left">部品</th>';
+  h+='<th class="px-2 py-2 text-left">詳細</th><th class="px-2 py-2 text-center">状態</th></tr></thead><tbody>';
+  for(const r of reports){
+    h+=`<tr class="border-b hover:bg-gray-50">`;
+    h+=`<td class="px-2 py-1.5">${fmtDate(r.report_date)}</td>`;
+    h+=`<td class="px-2 py-1.5 font-medium">${r.reporter_name||'-'}</td>`;
+    h+=`<td class="px-2 py-1.5 font-mono">${r.job_code||'-'}</td>`;
+    h+=`<td class="px-2 py-1.5">${r.work_factory||'-'}</td>`;
+    h+=`<td class="px-2 py-1.5">${r.work_office||'-'}</td>`;
+    h+=`<td class="px-2 py-1.5 text-right">${r.attendance1||0}h</td>`;
+    h+=`<td class="px-2 py-1.5 text-right">${r.attendance2||0}h</td>`;
+    h+=`<td class="px-2 py-1.5">${r.drawing_number||'-'}</td>`;
+    h+=`<td class="px-2 py-1.5">${r.part_number||'-'}</td>`;
+    h+=`<td class="px-2 py-1.5 max-w-[200px] truncate" title="${(r.detail||'').replace(/"/g,'&quot;')}">${r.detail||'-'}</td>`;
+    h+=`<td class="px-2 py-1.5 text-center"><span class="${r.status==='approved'?'status-approved':'status-pending'}">${r.status==='approved'?'承認済':'未確認'}</span></td>`;
+    h+=`</tr>`;
+  }
+  h+='</tbody></table></div>';
+  if(reports.length>=500)h+='<p class="text-xs text-gray-400 text-center mt-2">※最大500件まで表示</p>';
+  document.getElementById('arTable').innerHTML=h;
 }
 
 // === Admin ===
@@ -611,6 +701,7 @@ async function logout(){
   document.getElementById('headerUser').textContent=currentUser.display_name;
   if(currentUser.role==='admin'){
     document.getElementById('navPending').style.display='';
+    document.getElementById('navReport').style.display='';
     document.getElementById('navAdmin').style.display='';
     updatePendingBadge();
   }

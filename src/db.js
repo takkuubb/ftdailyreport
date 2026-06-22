@@ -293,10 +293,58 @@ function exportApprovedCSV(startDate, endDate) {
     ORDER BY r.report_date, u.display_name`).all(startDate, endDate);
 }
 
+// Admin report: all reports with filters
+function listAllReports(filters) {
+  const d = getDb();
+  const conds = [];
+  const params = [];
+  if (filters.start) { conds.push('r.report_date >= ?'); params.push(filters.start); }
+  if (filters.end) { conds.push('r.report_date <= ?'); params.push(filters.end); }
+  if (filters.user_id) { conds.push('r.user_id = ?'); params.push(filters.user_id); }
+  if (filters.status) { conds.push('r.status = ?'); params.push(filters.status); }
+  if (filters.job_code) { conds.push('j.code LIKE ?'); params.push('%' + filters.job_code + '%'); }
+  if (filters.work_factory) { conds.push('r.work_factory = ?'); params.push(filters.work_factory); }
+  if (filters.work_office) { conds.push('r.work_office = ?'); params.push(filters.work_office); }
+  const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+  const rows = d.prepare(`SELECT r.*, u.display_name as reporter_name, u.employee_code, u.department_code, u.team,
+    j.code as job_code, j.name as job_name, a.display_name as approver_name
+    FROM reports r
+    LEFT JOIN users u ON r.user_id = u.id
+    LEFT JOIN job_numbers j ON r.job_number_id = j.id
+    LEFT JOIN users a ON r.approved_by = a.id
+    ${where}
+    ORDER BY r.report_date DESC, r.created_at DESC
+    LIMIT 500`).all(...params);
+  return rows;
+}
+
+function getReportStats(filters) {
+  const d = getDb();
+  const conds = [];
+  const params = [];
+  if (filters.start) { conds.push('r.report_date >= ?'); params.push(filters.start); }
+  if (filters.end) { conds.push('r.report_date <= ?'); params.push(filters.end); }
+  if (filters.user_id) { conds.push('r.user_id = ?'); params.push(filters.user_id); }
+  if (filters.status) { conds.push('r.status = ?'); params.push(filters.status); }
+  if (filters.job_code) { conds.push('j.code LIKE ?'); params.push('%' + filters.job_code + '%'); }
+  const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+  const row = d.prepare(`SELECT COUNT(*) as total,
+    SUM(CASE WHEN r.status='approved' THEN 1 ELSE 0 END) as approved,
+    SUM(CASE WHEN r.status='pending' THEN 1 ELSE 0 END) as pending,
+    SUM(r.attendance1) as total_att1, SUM(r.attendance2) as total_att2,
+    COUNT(DISTINCT r.user_id) as reporter_count,
+    COUNT(DISTINCT r.report_date) as date_count
+    FROM reports r
+    LEFT JOIN job_numbers j ON r.job_number_id = j.id
+    ${where}`).get(...params);
+  return row;
+}
+
 module.exports = {
   getDb, authenticateUser, getUser, listUsers, createUser, updateUser,
   getPasskeysByUser, savePasskey, getPasskeyByCredentialId, updatePasskeyCounter,
   listJobNumbers, searchJobNumbers, createJobNumber, updateJobNumber, deleteJobNumber,
   createReport, getReport, updateReport, listReportsByUser, listPendingReports,
-  approveReport, approveMultiple, getReportHistory, exportApprovedCSV
+  approveReport, approveMultiple, getReportHistory, exportApprovedCSV,
+  listAllReports, getReportStats
 };

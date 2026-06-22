@@ -29,7 +29,10 @@ function requireAdmin(req, res, next) {
 }
 
 // === Pages ===
-app.get(`${BASE}/`, requireAuth, (req, res) => res.sendFile(path.join(__dirname, 'views', 'app.html')));
+app.get(`${BASE}/`, (req, res) => {
+  if (!req.session?.user) return res.redirect(`${BASE}/login`);
+  res.sendFile(path.join(__dirname, 'views', 'app.html'));
+});
 app.get(`${BASE}/login`, (req, res) => res.sendFile(path.join(__dirname, 'views', 'login.html')));
 
 // === Auth ===

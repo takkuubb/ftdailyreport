@@ -188,17 +188,79 @@ app.post(`${BASE}/api/admin/approve`, requireAuth, requireAdmin, (req, res) => {
   res.json({ success: true, approved: n });
 });
 
-// === Admin: CSV ===
+// === Admin: CSV (42-column format) ===
 app.get(`${BASE}/api/admin/csv`, requireAuth, requireAdmin, (req, res) => {
   const { start, end } = req.query;
   if (!start || !end) return res.status(400).json({ error: '期間を指定してください' });
   const rows = db.exportApprovedCSV(start, end);
-  const header = '報告日,報告者名,工番,作業内容（工場）,作業内容（営業・工務）,勤怠1,勤怠2,図面番号,部品番号,詳細,承認日時,承認者\n';
-  const csv = header + rows.map(r =>
-    [r.report_date, r.reporter_name, r.job_code, r.work_factory, r.work_office,
-     r.attendance1, r.attendance2, r.drawing_number, r.part_number, r.detail,
-     r.approved_at, r.approver_name].map(v => `"${(v == null ? '' : String(v)).replace(/"/g, '""')}"`).join(',')
-  ).join('\n');
+
+  // 42 columns header
+  const header = [
+    '伝票番号','入力方式','日付','従業員コード','従業員名',
+    'スタンプ1','スタンプ2','スタンプ3','第2区分','金額端数',
+    '承認','仮伝票','合計金額','システム予約','システム予約','システム予約','システム予約',
+    '工事ｺｰﾄﾞ','工事ｺｰﾄﾞ枝番','工事名',
+    '勤怠項目1','勤怠項目2','勤怠項目3','勤怠項目4','勤怠項目5',
+    '勤怠項目6','勤怠項目7','勤怠項目8','勤怠項目9','勤怠項目10',
+    '手当コード','手当名','手当金額','明細合計金額',
+    '工種コード','工種名','部門コード','部門名',
+    '作業種類コード','作業種類名','備考','原価締'
+  ];
+
+  function splitJobCode(code) {
+    if (!code) return ['', ''];
+    // e.g. "122-037-00" → main="122-037", branch="00"
+    const lastDash = code.lastIndexOf('-');
+    if (lastDash <= 0) return [code, ''];
+    return [code.substring(0, lastDash), code.substring(lastDash + 1)];
+  }
+
+  function buildBiko(r) {
+    const parts = [];
+    if (r.drawing_number) parts.push(r.drawing_number);
+    if (r.part_number) parts.push(r.part_number);
+    if (r.detail) parts.push(r.detail);
+    return parts.join('/');
+  }
+
+  const csvRows = rows.map(r => {
+    const [jobMain, jobBranch] = splitJobCode(r.job_code);
+    return [
+      '',                        // 伝票番号
+      '',                        // 入力方式
+      r.report_date || '',       // 日付
+      r.employee_code || '',     // 従業員コード
+      r.reporter_name || '',     // 従業員名
+      '','','',                  // スタンプ1-3
+      '',                        // 第2区分
+      '',                        // 金額端数
+      '',                        // 承認
+      '',                        // 仮伝票
+      '',                        // 合計金額
+      '','','','',               // システム予約 x4
+      jobMain,                   // 工事ｺｰﾄﾞ
+      jobBranch,                 // 工事ｺｰﾄﾞ枝番
+      r.job_name || '',          // 工事名
+      r.attendance1 || '',       // 勤怠項目1
+      '',                        // 勤怠項目2
+      '','','','','','','','',   // 勤怠項目3-10
+      '',                        // 手当コード
+      '',                        // 手当名
+      '',                        // 手当金額
+      '',                        // 明細合計金額
+      r.employee_code || '',     // 工種コード (= 従業員コード)
+      '',                        // 工種名
+      r.department_code || '',   // 部門コード
+      '',                        // 部門名
+      '',                        // 作業種類コード
+      '',                        // 作業種類名
+      buildBiko(r),              // 備考
+      ''                         // 原価締
+    ];
+  });
+
+  const esc = v => `"${(v == null ? '' : String(v)).replace(/"/g, '""')}"`;
+  const csv = [header.map(esc).join(','), ...csvRows.map(row => row.map(esc).join(','))].join('\n');
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="daily_report_${start}_${end}.csv"`);
   res.send('\ufeff' + csv);
@@ -208,9 +270,9 @@ app.get(`${BASE}/api/admin/csv`, requireAuth, requireAdmin, (req, res) => {
 app.get(`${BASE}/api/admin/users`, requireAuth, requireAdmin, (req, res) => res.json(db.listUsers()));
 app.post(`${BASE}/api/admin/users`, requireAuth, requireAdmin, (req, res) => {
   try {
-    const { email, password, display_name, role } = req.body;
+    const { email, password, display_name, role, employee_code, department_code, hourly_rate, team } = req.body;
     if (!email || !password || !display_name) return res.status(400).json({ error: '全項目を入力してください' });
-    db.createUser(email, password, display_name, role || 'reporter');
+    db.createUser(email, password, display_name, role || 'reporter', { employee_code, department_code, hourly_rate, team });
     res.json({ success: true });
   } catch (e) { res.status(400).json({ error: e.message.includes('UNIQUE') ? 'メールアドレス重複' : e.message }); }
 });

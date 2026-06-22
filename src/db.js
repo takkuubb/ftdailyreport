@@ -23,6 +23,10 @@ function initSchema() {
       password_hash TEXT NOT NULL,
       display_name TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'reporter' CHECK(role IN ('reporter','admin')),
+      employee_code TEXT NOT NULL DEFAULT '',
+      department_code TEXT NOT NULL DEFAULT '',
+      hourly_rate INTEGER NOT NULL DEFAULT 0,
+      team TEXT NOT NULL DEFAULT '',
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
@@ -80,6 +84,16 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_passkeys_cred ON passkeys(credential_id);
   `);
 
+  // Migrate: add new columns if missing
+  const cols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+  if (!cols.includes('employee_code')) {
+    db.exec("ALTER TABLE users ADD COLUMN employee_code TEXT NOT NULL DEFAULT ''");
+    db.exec("ALTER TABLE users ADD COLUMN department_code TEXT NOT NULL DEFAULT ''");
+    db.exec("ALTER TABLE users ADD COLUMN hourly_rate INTEGER NOT NULL DEFAULT 0");
+    db.exec("ALTER TABLE users ADD COLUMN team TEXT NOT NULL DEFAULT ''");
+    console.log('Migrated: added employee_code, department_code, hourly_rate, team to users');
+  }
+
   // Seed admin if no users
   const cnt = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
   if (cnt === 0) {
@@ -94,20 +108,25 @@ function authenticateUser(email, password) {
   const user = getDb().prepare('SELECT * FROM users WHERE email = ? AND active = 1').get(email);
   if (!user) return null;
   if (!bcrypt.compareSync(password, user.password_hash)) return null;
-  return { id: user.id, email: user.email, display_name: user.display_name, role: user.role };
+  return { id: user.id, email: user.email, display_name: user.display_name, role: user.role,
+           employee_code: user.employee_code, department_code: user.department_code,
+           hourly_rate: user.hourly_rate, team: user.team };
 }
 
 function getUser(id) {
-  return getDb().prepare('SELECT id, email, display_name, role, active, created_at FROM users WHERE id = ?').get(id);
+  return getDb().prepare('SELECT id, email, display_name, role, employee_code, department_code, hourly_rate, team, active, created_at FROM users WHERE id = ?').get(id);
 }
 
 function listUsers() {
-  return getDb().prepare('SELECT id, email, display_name, role, active, created_at FROM users ORDER BY id').all();
+  return getDb().prepare('SELECT id, email, display_name, role, employee_code, department_code, hourly_rate, team, active, created_at FROM users ORDER BY id').all();
 }
 
-function createUser(email, password, displayName, role) {
+function createUser(email, password, displayName, role, extra) {
   const hash = bcrypt.hashSync(password, 10);
-  return getDb().prepare('INSERT INTO users (email, password_hash, display_name, role) VALUES (?,?,?,?)').run(email, hash, displayName, role || 'reporter');
+  const e = extra || {};
+  return getDb().prepare('INSERT INTO users (email, password_hash, display_name, role, employee_code, department_code, hourly_rate, team) VALUES (?,?,?,?,?,?,?,?)').run(
+    email, hash, displayName, role || 'reporter',
+    e.employee_code || '', e.department_code || '', e.hourly_rate || 0, e.team || '');
 }
 
 function updateUser(id, data) {
@@ -115,15 +134,13 @@ function updateUser(id, data) {
   if (data.password) {
     d.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(bcrypt.hashSync(data.password, 10), id);
   }
-  if (data.display_name !== undefined) {
-    d.prepare("UPDATE users SET display_name = ?, updated_at = datetime('now') WHERE id = ?").run(data.display_name, id);
-  }
-  if (data.role !== undefined) {
-    d.prepare("UPDATE users SET role = ?, updated_at = datetime('now') WHERE id = ?").run(data.role, id);
-  }
-  if (data.active !== undefined) {
-    d.prepare("UPDATE users SET active = ?, updated_at = datetime('now') WHERE id = ?").run(data.active ? 1 : 0, id);
-  }
+  if (data.display_name !== undefined) d.prepare("UPDATE users SET display_name = ?, updated_at = datetime('now') WHERE id = ?").run(data.display_name, id);
+  if (data.role !== undefined) d.prepare("UPDATE users SET role = ?, updated_at = datetime('now') WHERE id = ?").run(data.role, id);
+  if (data.active !== undefined) d.prepare("UPDATE users SET active = ?, updated_at = datetime('now') WHERE id = ?").run(data.active ? 1 : 0, id);
+  if (data.employee_code !== undefined) d.prepare("UPDATE users SET employee_code = ?, updated_at = datetime('now') WHERE id = ?").run(data.employee_code, id);
+  if (data.department_code !== undefined) d.prepare("UPDATE users SET department_code = ?, updated_at = datetime('now') WHERE id = ?").run(data.department_code, id);
+  if (data.hourly_rate !== undefined) d.prepare("UPDATE users SET hourly_rate = ?, updated_at = datetime('now') WHERE id = ?").run(parseInt(data.hourly_rate) || 0, id);
+  if (data.team !== undefined) d.prepare("UPDATE users SET team = ?, updated_at = datetime('now') WHERE id = ?").run(data.team, id);
 }
 
 // === Passkey functions ===
@@ -183,7 +200,9 @@ function createReport(userId, data) {
 }
 
 function getReport(id) {
-  return getDb().prepare(`SELECT r.*, u.display_name as reporter_name, j.code as job_code, j.name as job_name,
+  return getDb().prepare(`SELECT r.*, u.display_name as reporter_name,
+    u.employee_code, u.department_code, u.hourly_rate, u.team,
+    j.code as job_code, j.name as job_name,
     a.display_name as approver_name
     FROM reports r
     LEFT JOIN users u ON r.user_id = u.id
@@ -197,7 +216,6 @@ function updateReport(id, userId, data) {
   const old = getReport(id);
   if (!old || old.status === 'approved') return null;
 
-  // Build changes diff
   const changes = {};
   const fields = ['report_date', 'job_number_id', 'work_factory', 'work_office', 'attendance1', 'attendance2', 'drawing_number', 'part_number', 'detail'];
   for (const f of fields) {
@@ -222,7 +240,6 @@ function updateReport(id, userId, data) {
     id
   );
 
-  // Record history
   d.prepare('INSERT INTO report_history (report_id, changed_by, changes) VALUES (?,?,?)').run(id, userId, JSON.stringify(changes));
   return getReport(id);
 }
@@ -259,10 +276,14 @@ function getReportHistory(reportId) {
     WHERE rh.report_id = ? ORDER BY rh.changed_at DESC`).all(reportId);
 }
 
+// CSV export with full 42-column format
 function exportApprovedCSV(startDate, endDate) {
-  return getDb().prepare(`SELECT r.report_date, u.display_name as reporter_name,
-    j.code as job_code, r.work_factory, r.work_office,
-    r.attendance1, r.attendance2, r.drawing_number, r.part_number, r.detail,
+  return getDb().prepare(`SELECT r.id, r.report_date,
+    u.display_name as reporter_name, u.employee_code, u.department_code, u.hourly_rate, u.team,
+    j.code as job_code, j.name as job_name,
+    r.work_factory, r.work_office,
+    r.attendance1, r.attendance2,
+    r.drawing_number, r.part_number, r.detail,
     r.approved_at, a.display_name as approver_name
     FROM reports r
     LEFT JOIN users u ON r.user_id = u.id

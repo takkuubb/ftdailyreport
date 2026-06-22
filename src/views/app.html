@@ -411,12 +411,16 @@ async function loadUsers(){
     <h3 class="font-bold text-sm mb-3">👥 アカウント管理</h3>
     <button onclick="showAddUser()" class="btn btn-primary w-full mb-3"><i class="fas fa-user-plus mr-2"></i>新規アカウント</button>`;
   for(const u of users){
-    html+=`<div class="flex items-center gap-2 py-2 border-b text-sm">
-      <div class="flex-1">
-        <div class="font-bold ${u.active?'':'text-gray-400'}">${u.display_name} <span class="text-xs px-2 py-0.5 rounded-full ${u.role==='admin'?'bg-purple-100 text-purple-700':'bg-gray-100 text-gray-600'}">${u.role==='admin'?'管理者':'報告者'}</span></div>
-        <div class="text-xs text-gray-500">${u.email}</div>
+    html+=`<div class="py-3 border-b text-sm">
+      <div class="flex items-center gap-2">
+        <div class="flex-1">
+          <div class="font-bold ${u.active?'':'text-gray-400'}">${u.display_name} <span class="text-xs px-2 py-0.5 rounded-full ${u.role==='admin'?'bg-purple-100 text-purple-700':'bg-gray-100 text-gray-600'}">${u.role==='admin'?'管理者':'報告者'}</span></div>
+          <div class="text-xs text-gray-500">${u.email}</div>
+          <div class="text-xs text-gray-400 mt-1">従業員:${u.employee_code||'-'} | 部門:${u.department_code||'-'} | 工賃:${u.hourly_rate||0}円 | 班:${u.team||'-'}</div>
+        </div>
+        <button onclick="showEditUser(${u.id})" class="text-xs text-blue-600"><i class="fas fa-edit"></i></button>
+        <button onclick="toggleUser(${u.id},${u.active?0:1})" class="text-xs ${u.active?'text-red-500':'text-green-600'}">${u.active?'無効':'有効'}</button>
       </div>
-      <button onclick="toggleUser(${u.id},${u.active?0:1})" class="text-xs ${u.active?'text-red-500':'text-green-600'}">${u.active?'無効':'有効'}</button>
     </div>`;
   }
   html+='</div>';
@@ -433,6 +437,15 @@ function showAddUser(){
           <div><label class="text-xs text-gray-500">メールアドレス</label><input type="email" id="nuEmail" class="input" placeholder="email@example.com"></div>
           <div><label class="text-xs text-gray-500">パスワード</label><input type="password" id="nuPass" class="input" placeholder="6文字以上"></div>
           <div><label class="text-xs text-gray-500">権限</label><select id="nuRole" class="input"><option value="reporter">報告者</option><option value="admin">管理者</option></select></div>
+          <div class="border-t pt-3 mt-2">
+            <p class="text-xs font-bold text-gray-600 mb-2">追加情報</p>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="text-xs text-gray-500">従業員コード</label><input type="text" id="nuEmpCode" class="input" placeholder="例: E001"></div>
+              <div><label class="text-xs text-gray-500">部門コード</label><input type="text" id="nuDeptCode" class="input" placeholder="例: D01"></div>
+              <div><label class="text-xs text-gray-500">工賃単価（円）</label><input type="number" id="nuRate" class="input" placeholder="0" inputmode="numeric"></div>
+              <div><label class="text-xs text-gray-500">所属班</label><input type="text" id="nuTeam" class="input" placeholder="例: A班"></div>
+            </div>
+          </div>
         </div>
         <div class="flex gap-3 mt-4">
           <button onclick="closeModal()" class="btn btn-outline flex-1">キャンセル</button>
@@ -442,10 +455,53 @@ function showAddUser(){
     </div>`;
 }
 
+function showEditUser(id){
+  api('/api/admin/users').then(users=>{
+    const u=users.find(x=>x.id===id);
+    if(!u)return;
+    document.getElementById('modalContainer').innerHTML=`
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal-content">
+        <h3 class="text-lg font-bold mb-4">✏️ アカウント編集: ${u.display_name}</h3>
+        <div class="space-y-3">
+          <div><label class="text-xs text-gray-500">表示名</label><input type="text" id="euName" class="input" value="${u.display_name}"></div>
+          <div><label class="text-xs text-gray-500">権限</label><select id="euRole" class="input"><option value="reporter" ${u.role==='reporter'?'selected':''}>報告者</option><option value="admin" ${u.role==='admin'?'selected':''}>管理者</option></select></div>
+          <div><label class="text-xs text-gray-500">パスワード（変更時のみ）</label><input type="password" id="euPass" class="input" placeholder="変更しない場合は空欄"></div>
+          <div class="border-t pt-3 mt-2">
+            <p class="text-xs font-bold text-gray-600 mb-2">追加情報</p>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="text-xs text-gray-500">従業員コード</label><input type="text" id="euEmpCode" class="input" value="${u.employee_code||''}"></div>
+              <div><label class="text-xs text-gray-500">部門コード</label><input type="text" id="euDeptCode" class="input" value="${u.department_code||''}"></div>
+              <div><label class="text-xs text-gray-500">工賃単価（円）</label><input type="number" id="euRate" class="input" value="${u.hourly_rate||0}" inputmode="numeric"></div>
+              <div><label class="text-xs text-gray-500">所属班</label><input type="text" id="euTeam" class="input" value="${u.team||''}"></div>
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-3 mt-4">
+          <button onclick="closeModal()" class="btn btn-outline flex-1">キャンセル</button>
+          <button onclick="saveEditUser(${u.id})" class="btn btn-primary flex-1">保存</button>
+        </div>
+      </div>
+    </div>`;
+  });
+}
+
+async function saveEditUser(id){
+  const body={display_name:document.getElementById('euName').value,role:document.getElementById('euRole').value,
+    employee_code:document.getElementById('euEmpCode').value,department_code:document.getElementById('euDeptCode').value,
+    hourly_rate:parseInt(document.getElementById('euRate').value)||0,team:document.getElementById('euTeam').value};
+  const pw=document.getElementById('euPass').value;
+  if(pw)body.password=pw;
+  const r=await api('/api/admin/users/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r?.success){closeModal();toast('更新しました');loadUsers()}else toast(r?.error||'エラー');
+}
+
 async function createUser(){
   const r=await api('/api/admin/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     display_name:document.getElementById('nuName').value,email:document.getElementById('nuEmail').value,
-    password:document.getElementById('nuPass').value,role:document.getElementById('nuRole').value
+    password:document.getElementById('nuPass').value,role:document.getElementById('nuRole').value,
+    employee_code:document.getElementById('nuEmpCode').value,department_code:document.getElementById('nuDeptCode').value,
+    hourly_rate:parseInt(document.getElementById('nuRate').value)||0,team:document.getElementById('nuTeam').value
   })});
   if(r?.success){closeModal();toast('作成しました');loadUsers()}else toast(r?.error||'エラー');
 }

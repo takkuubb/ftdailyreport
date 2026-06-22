@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FT Daily Report - ログイン</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+body{font-family:'Hiragino Sans','Noto Sans JP',system-ui,sans-serif;background:linear-gradient(135deg,#1e3a5f 0%,#2d5a88 50%,#1e3a5f 100%);min-height:100vh;display:flex;align-items:center;justify-content:center}
+.login-card{width:100%;max-width:400px;margin:16px}
+input{min-height:48px;font-size:16px}
+button{min-height:48px}
+</style>
+</head>
+<body>
+<div class="login-card">
+  <div class="bg-white rounded-2xl shadow-2xl p-8">
+    <div class="text-center mb-6">
+      <div class="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
+        <i class="fas fa-clipboard-list text-white text-2xl"></i>
+      </div>
+      <h1 class="text-xl font-bold text-gray-800">FT Daily Report</h1>
+      <p class="text-sm text-gray-500 mt-1">作業日報システム</p>
+    </div>
+
+    <div id="loginForm">
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">メールアドレス</label>
+        <input type="email" id="email" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="email@example.com" autocomplete="username">
+      </div>
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-1">パスワード</label>
+        <input type="password" id="password" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button onclick="loginPassword()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg py-3 transition mb-3">
+        <i class="fas fa-sign-in-alt mr-2"></i>ログイン
+      </button>
+
+      <div class="relative my-4">
+        <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-300"></div></div>
+        <div class="relative flex justify-center text-sm"><span class="px-2 bg-white text-gray-500">または</span></div>
+      </div>
+
+      <button onclick="loginPasskey()" id="passkeyBtn" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold rounded-lg py-3 transition flex items-center justify-center gap-2">
+        <i class="fas fa-fingerprint text-lg"></i>パスキーでログイン
+      </button>
+    </div>
+
+    <div id="error" class="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm hidden"></div>
+  </div>
+</div>
+
+<script>
+const B='/ftdailyreport';
+
+function showError(msg){const e=document.getElementById('error');e.textContent=msg;e.classList.remove('hidden')}
+function hideError(){document.getElementById('error').classList.add('hidden')}
+
+async function loginPassword(){
+  hideError();
+  const email=document.getElementById('email').value.trim();
+  const password=document.getElementById('password').value;
+  if(!email||!password){showError('メールアドレスとパスワードを入力してください');return}
+  try{
+    const r=await fetch(B+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
+    const d=await r.json();
+    if(d.success)location.href=B+'/';
+    else showError(d.error||'ログインに失敗しました');
+  }catch(e){showError('通信エラー: '+e.message)}
+}
+
+async function loginPasskey(){
+  hideError();
+  try{
+    if(!window.PublicKeyCredential){showError('このブラウザはパスキーに対応していません');return}
+    const optRes=await fetch(B+'/api/passkey/auth-options',{method:'POST',headers:{'Content-Type':'application/json'}});
+    const options=await optRes.json();
+    // Decode challenge
+    options.challenge=base64urlToBuffer(options.challenge);
+    if(options.allowCredentials)options.allowCredentials=options.allowCredentials.map(c=>({...c,id:base64urlToBuffer(c.id)}));
+    const credential=await navigator.credentials.get({publicKey:options});
+    const body={
+      id:credential.id,rawId:bufferToBase64url(credential.rawId),type:credential.type,
+      response:{clientDataJSON:bufferToBase64url(credential.response.clientDataJSON),
+        authenticatorData:bufferToBase64url(credential.response.authenticatorData),
+        signature:bufferToBase64url(credential.response.signature),
+        userHandle:credential.response.userHandle?bufferToBase64url(credential.response.userHandle):null}
+    };
+    const r=await fetch(B+'/api/passkey/auth-verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.success)location.href=B+'/';
+    else showError(d.error||'パスキー認証に失敗しました');
+  }catch(e){
+    if(e.name==='NotAllowedError')showError('パスキー認証がキャンセルされました');
+    else showError('パスキーエラー: '+e.message);
+  }
+}
+
+function base64urlToBuffer(b){const s=b.replace(/-/g,'+').replace(/_/g,'/');const r=atob(s);const a=new Uint8Array(r.length);for(let i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a.buffer}
+function bufferToBase64url(b){const a=new Uint8Array(b);let s='';a.forEach(v=>s+=String.fromCharCode(v));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'')}
+
+// Check passkey availability
+(async()=>{
+  if(!window.PublicKeyCredential){document.getElementById('passkeyBtn').style.display='none';return}
+  try{
+    const avail=await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    if(!avail)document.getElementById('passkeyBtn').style.display='none';
+  }catch(e){}
+})();
+
+// Enter key
+document.getElementById('password').addEventListener('keydown',e=>{if(e.key==='Enter')loginPassword()});
+</script>
+</body>
+</html>

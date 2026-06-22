@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FT Daily Report</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+body{font-family:'Hiragino Sans','Noto Sans JP',system-ui,sans-serif;background:#f0f4f8;padding-bottom:80px}
+.btn{min-height:48px;min-width:48px;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;font-weight:600;transition:all .15s;cursor:pointer}
+.btn-primary{background:#2563eb;color:#fff}.btn-primary:hover{background:#1d4ed8}
+.btn-success{background:#059669;color:#fff}.btn-success:hover{background:#047857}
+.btn-danger{background:#dc2626;color:#fff}.btn-danger:hover{background:#b91c1c}
+.btn-outline{border:2px solid #d1d5db;color:#374151}.btn-outline:hover{background:#f3f4f6}
+.card{background:#fff;border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:16px;margin-bottom:12px}
+.input{width:100%;min-height:48px;border:2px solid #e5e7eb;border-radius:12px;padding:10px 14px;font-size:16px;transition:border .15s}
+.input:focus{border-color:#2563eb;outline:none;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+select.input{appearance:none;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%236b7280' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E") no-repeat right 14px center/12px;padding-right:36px}
+.section-factory{background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px;margin-bottom:12px}
+.section-office{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px;margin-bottom:12px}
+.nav-bottom{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e7eb;display:flex;z-index:50;padding:4px 0 env(safe-area-inset-bottom)}
+.nav-bottom .nav-item{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 4px;font-size:10px;color:#6b7280;cursor:pointer;transition:color .15s}
+.nav-bottom .nav-item.active{color:#2563eb}
+.nav-bottom .nav-item i{font-size:20px;margin-bottom:2px}
+.badge{background:#dc2626;color:#fff;font-size:10px;border-radius:10px;padding:1px 6px;position:absolute;top:-4px;right:-8px}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:flex;align-items:flex-end;justify-content:center}
+.modal-content{background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;padding:20px;animation:slideUp .2s}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.status-pending{color:#d97706;background:#fffbeb;border:1px solid #fde68a;padding:2px 8px;border-radius:6px;font-size:12px}
+.status-approved{color:#059669;background:#ecfdf5;border:1px solid #a7f3d0;padding:2px 8px;border-radius:6px;font-size:12px}
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#065f46;color:#fff;padding:12px 24px;border-radius:12px;z-index:200;font-size:14px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.15);animation:fadeIn .2s}
+@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@media(min-width:640px){.modal-content{border-radius:20px;margin:auto;max-height:80vh}}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="bg-blue-700 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-40">
+  <div class="flex items-center gap-2">
+    <i class="fas fa-clipboard-list text-lg"></i>
+    <span class="font-bold text-sm">FT Daily Report</span>
+  </div>
+  <div class="flex items-center gap-3">
+    <span class="text-xs text-blue-200" id="headerUser"></span>
+    <button onclick="showSettings()" class="text-blue-200 hover:text-white"><i class="fas fa-cog"></i></button>
+  </div>
+</header>
+
+<!-- Pages -->
+<div id="page-report" class="page p-4 max-w-lg mx-auto"></div>
+<div id="page-history" class="page p-4 max-w-lg mx-auto hidden"></div>
+<div id="page-pending" class="page p-4 max-w-lg mx-auto hidden"></div>
+<div id="page-admin" class="page p-4 max-w-lg mx-auto hidden"></div>
+
+<!-- Bottom Nav -->
+<nav class="nav-bottom" id="bottomNav">
+  <div class="nav-item active" data-page="report" onclick="showPage('report')">
+    <i class="fas fa-edit"></i><span>日報報告</span>
+  </div>
+  <div class="nav-item" data-page="history" onclick="showPage('history')">
+    <i class="fas fa-history"></i><span>報告履歴</span>
+  </div>
+  <div class="nav-item" data-page="pending" onclick="showPage('pending')" id="navPending" style="display:none">
+    <div class="relative"><i class="fas fa-check-circle"></i><span class="badge" id="pendingBadge">0</span></div><span>未確認</span>
+  </div>
+  <div class="nav-item" data-page="admin" onclick="showPage('admin')" id="navAdmin" style="display:none">
+    <i class="fas fa-cog"></i><span>管理</span>
+  </div>
+</nav>
+
+<!-- Modal container -->
+<div id="modalContainer"></div>
+
+<script>
+const B='/ftdailyreport';
+let currentUser=null;
+let editingReportId=null;
+
+const WORK_FACTORY=['仮付','溶接','曲げ','穴明ー製缶','穴明ー機械','切断','機械','仕上げ','組立','検査','解体','梱包','着工前会議','完了工番会議','月例会議','朝礼','プラズマ切断','その他'];
+const WORK_OFFICE=['工場対応','資材発注','写真整理','検査','見積もり','現場関係','現場管理','設計','プラズマ切断','朝礼','朝MT','打合せ','月例会議','納品書処理','その他'];
+const ATT1=[0,0.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8];
+const ATT2=[0,0.5,1,1.5,2,2.5,3,3.5,4,4.5,5];
+
+async function api(p,o){const r=await fetch(B+p,o);if(r.status===401){location.href=B+'/login';return null}return r.json()}
+function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500)}
+function today(){return new Date().toISOString().slice(0,10)}
+function fmtDate(d){if(!d)return'-';const p=d.split('-');return `${p[0]}/${p[1]}/${p[2]}`}
+
+// === Page Navigation ===
+function showPage(p){
+  document.querySelectorAll('.page').forEach(el=>el.classList.add('hidden'));
+  document.getElementById('page-'+p).classList.remove('hidden');
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.page===p));
+  if(p==='report')renderReportForm();
+  else if(p==='history')loadHistory();
+  else if(p==='pending')loadPending();
+  else if(p==='admin')renderAdmin();
+}
+
+// === Report Form ===
+function renderReportForm(data){
+  editingReportId=data?data.id:null;
+  const d=data||{};
+  const el=document.getElementById('page-report');
+  el.innerHTML=`
+    <h2 class="text-lg font-bold text-gray-800 mb-3">${editingReportId?'📝 日報編集':'📝 日報報告'}</h2>
+    <div class="card">
+      <label class="block text-sm font-medium text-gray-600 mb-1">📅 日付</label>
+      <input type="date" id="rDate" class="input" value="${d.report_date||today()}">
+    </div>
+    <div class="card">
+      <label class="block text-sm font-medium text-gray-600 mb-1">🔢 工番</label>
+      <input type="text" id="rJobSearch" class="input" placeholder="工番を検索..." oninput="searchJob(this.value)" autocomplete="off" value="${d.job_code||''}">
+      <input type="hidden" id="rJobId" value="${d.job_number_id||''}">
+      <div id="jobResults" class="mt-1"></div>
+    </div>
+    <div class="section-factory">
+      <h3 class="text-sm font-bold text-blue-800 mb-2"><i class="fas fa-industry mr-1"></i>作業内容（工場）</h3>
+      <select id="rWorkFactory" class="input">${['（選択してください）',...WORK_FACTORY].map(w=>`<option value="${w==='（選択してください）'?'':w}" ${d.work_factory===w?'selected':''}>${w}</option>`).join('')}</select>
+    </div>
+    <div class="section-office">
+      <h3 class="text-sm font-bold text-green-800 mb-2"><i class="fas fa-briefcase mr-1"></i>作業内容（営業・工務）</h3>
+      <select id="rWorkOffice" class="input">${['（選択してください）',...WORK_OFFICE].map(w=>`<option value="${w==='（選択してください）'?'':w}" ${d.work_office===w?'selected':''}>${w}</option>`).join('')}</select>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div class="card">
+        <label class="block text-sm font-medium text-gray-600 mb-1">⏰ 勤怠1（定時内）</label>
+        <select id="rAtt1" class="input">${ATT1.map(v=>`<option value="${v}" ${(d.attendance1||0)==v?'selected':''}>${v}h</option>`).join('')}</select>
+      </div>
+      <div class="card">
+        <label class="block text-sm font-medium text-gray-600 mb-1">🕐 勤怠2（残業）</label>
+        <select id="rAtt2" class="input">${ATT2.map(v=>`<option value="${v}" ${(d.attendance2||0)==v?'selected':''}>${v}h</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div class="card">
+        <label class="block text-sm font-medium text-gray-600 mb-1">📐 図面番号（下3桁）</label>
+        <input type="text" id="rDrawing" class="input" maxlength="3" pattern="[0-9]{3}" inputmode="numeric" placeholder="000" value="${d.drawing_number||''}">
+      </div>
+      <div class="card">
+        <label class="block text-sm font-medium text-gray-600 mb-1">🔩 部品番号（下3桁）</label>
+        <input type="text" id="rPart" class="input" maxlength="3" pattern="[0-9]{3}" inputmode="numeric" placeholder="000" value="${d.part_number||''}">
+      </div>
+    </div>
+    <div class="card">
+      <label class="block text-sm font-medium text-gray-600 mb-1">📝 作業内容詳細</label>
+      <textarea id="rDetail" class="input" rows="3" placeholder="詳細な作業メモ..." style="min-height:80px">${d.detail||''}</textarea>
+    </div>
+    <button onclick="confirmReport()" class="btn btn-primary w-full text-lg mt-2">
+      <i class="fas fa-search mr-2"></i>確認
+    </button>
+    ${editingReportId?'<button onclick="showPage(\'history\')" class="btn btn-outline w-full mt-2">キャンセル</button>':''}
+  `;
+}
+
+let jobSearchTimer;
+async function searchJob(q){
+  clearTimeout(jobSearchTimer);
+  if(!q||q.length<1){document.getElementById('jobResults').innerHTML='';return}
+  jobSearchTimer=setTimeout(async()=>{
+    const jobs=await api('/api/job-numbers?q='+encodeURIComponent(q));
+    if(!jobs)return;
+    document.getElementById('jobResults').innerHTML=jobs.length?
+      jobs.map(j=>`<div class="px-3 py-2 hover:bg-blue-50 cursor-pointer rounded-lg text-sm border-b" onclick="selectJob(${j.id},'${j.code}','${j.name}')">${j.code} <span class="text-gray-500">${j.name}</span></div>`).join('')
+      :'<div class="text-xs text-gray-400 py-2">見つかりません</div>';
+  },200);
+}
+
+function selectJob(id,code,name){
+  document.getElementById('rJobId').value=id;
+  document.getElementById('rJobSearch').value=code+(name?' - '+name:'');
+  document.getElementById('jobResults').innerHTML='';
+}
+
+function getFormData(){
+  return {
+    report_date:document.getElementById('rDate').value,
+    job_number_id:parseInt(document.getElementById('rJobId').value)||null,
+    job_code:document.getElementById('rJobSearch').value,
+    work_factory:document.getElementById('rWorkFactory').value,
+    work_office:document.getElementById('rWorkOffice').value,
+    attendance1:parseFloat(document.getElementById('rAtt1').value)||0,
+    attendance2:parseFloat(document.getElementById('rAtt2').value)||0,
+    drawing_number:document.getElementById('rDrawing').value,
+    part_number:document.getElementById('rPart').value,
+    detail:document.getElementById('rDetail').value
+  };
+}
+
+function confirmReport(){
+  const d=getFormData();
+  if(!d.report_date){toast('日付を入力してください');return}
+  const html=`
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal-content">
+        <h3 class="text-lg font-bold mb-4">📋 入力内容の確認</h3>
+        <table class="w-full text-sm">
+          <tr class="border-b"><td class="py-2 text-gray-500 w-28">日付</td><td class="py-2 font-medium">${fmtDate(d.report_date)}</td></tr>
+          <tr class="border-b"><td class="py-2 text-gray-500">工番</td><td class="py-2 font-medium">${d.job_code||'-'}</td></tr>
+          ${d.work_factory?`<tr class="border-b bg-blue-50"><td class="py-2 text-gray-500">作業（工場）</td><td class="py-2 font-medium">${d.work_factory}</td></tr>`:''}
+          ${d.work_office?`<tr class="border-b bg-green-50"><td class="py-2 text-gray-500">作業（営業）</td><td class="py-2 font-medium">${d.work_office}</td></tr>`:''}
+          <tr class="border-b"><td class="py-2 text-gray-500">勤怠1/2</td><td class="py-2 font-medium">${d.attendance1}h / ${d.attendance2}h</td></tr>
+          ${d.drawing_number?`<tr class="border-b"><td class="py-2 text-gray-500">図面番号</td><td class="py-2 font-medium">${d.drawing_number}</td></tr>`:''}
+          ${d.part_number?`<tr class="border-b"><td class="py-2 text-gray-500">部品番号</td><td class="py-2 font-medium">${d.part_number}</td></tr>`:''}
+          ${d.detail?`<tr class="border-b"><td class="py-2 text-gray-500">詳細</td><td class="py-2 font-medium whitespace-pre-wrap">${d.detail}</td></tr>`:''}
+        </table>
+        <div class="flex gap-3 mt-6">
+          <button onclick="closeModal()" class="btn btn-outline flex-1">戻る</button>
+          <button onclick="submitReport()" class="btn btn-success flex-1 text-lg"><i class="fas fa-check mr-1"></i>${editingReportId?'更新':'登録'}</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('modalContainer').innerHTML=html;
+}
+
+async function submitReport(){
+  const d=getFormData();
+  closeModal();
+  let r;
+  if(editingReportId){
+    r=await api('/api/reports/'+editingReportId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
+  }else{
+    r=await api('/api/reports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
+  }
+  if(r?.success){
+    toast(editingReportId?'日報を更新しました':'日報を登録しました');
+    editingReportId=null;
+    renderReportForm();
+  }else{
+    toast('エラー: '+(r?.error||'登録に失敗'));
+  }
+}
+
+function closeModal(){document.getElementById('modalContainer').innerHTML=''}
+
+// === History ===
+async function loadHistory(){
+  const el=document.getElementById('page-history');
+  el.innerHTML='<h2 class="text-lg font-bold text-gray-800 mb-3">📋 報告履歴</h2><div class="text-center py-4"><div class="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto"></div></div>';
+  const reports=await api('/api/reports?limit=100');
+  if(!reports){el.innerHTML='<p>読み込みエラー</p>';return}
+  if(!reports.length){el.innerHTML='<h2 class="text-lg font-bold text-gray-800 mb-3">📋 報告履歴</h2><p class="text-gray-500 text-center py-8">まだ日報がありません</p>';return}
+  let html='<h2 class="text-lg font-bold text-gray-800 mb-3">📋 報告履歴</h2>';
+  for(const r of reports){
+    html+=`<div class="card flex items-center gap-3">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="font-bold text-sm">${fmtDate(r.report_date)}</span>
+          <span class="${r.status==='approved'?'status-approved':'status-pending'}">${r.status==='approved'?'承認済':'未確認'}</span>
+        </div>
+        <div class="text-xs text-gray-600 truncate">${r.job_code||'-'} | ${r.work_factory||''} ${r.work_office||''}</div>
+        <div class="text-xs text-gray-400">勤怠: ${r.attendance1}h + ${r.attendance2}h</div>
+      </div>
+      <div class="flex gap-1">
+        ${r.status!=='approved'?`<button onclick="editReport(${r.id})" class="btn btn-outline text-xs px-3 py-1"><i class="fas fa-edit"></i></button>`:''}
+        <button onclick="showHistory(${r.id})" class="btn btn-outline text-xs px-3 py-1"><i class="fas fa-clock-rotate-left"></i></button>
+      </div>
+    </div>`;
+  }
+  el.innerHTML=html;
+}
+
+async function editReport(id){
+  const r=await api('/api/reports/'+id);
+  if(!r)return;
+  if(r.status==='approved'){toast('承認済みの日報は編集できません');return}
+  showPage('report');
+  renderReportForm(r);
+}
+
+async function showHistory(id){
+  const history=await api('/api/reports/'+id+'/history');
+  if(!history)return;
+  const LABELS={report_date:'日付',job_number_id:'工番',work_factory:'作業（工場）',work_office:'作業（営業）',attendance1:'勤怠1',attendance2:'勤怠2',drawing_number:'図面番号',part_number:'部品番号',detail:'詳細'};
+  let html=`<div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal-content">
+      <h3 class="text-lg font-bold mb-4">🕐 変更履歴</h3>`;
+  if(!history.length){html+='<p class="text-gray-500 text-center py-4">変更履歴はありません</p>';}
+  else{
+    for(const h of history){
+      const changes=JSON.parse(h.changes||'{}');
+      html+=`<div class="border-b pb-3 mb-3"><div class="text-xs text-gray-500">${h.changed_at} — ${h.changer_name}</div>`;
+      for(const[k,v]of Object.entries(changes)){
+        html+=`<div class="text-sm mt-1"><span class="text-gray-600">${LABELS[k]||k}:</span> <span class="line-through text-red-500">${v.before||'(空)'}</span> → <span class="text-green-700">${v.after||'(空)'}</span></div>`;
+      }
+      html+='</div>';
+    }
+  }
+  html+='<button onclick="closeModal()" class="btn btn-outline w-full">閉じる</button></div></div>';
+  document.getElementById('modalContainer').innerHTML=html;
+}
+
+// === Pending (Admin) ===
+async function loadPending(){
+  const el=document.getElementById('page-pending');
+  el.innerHTML='<h2 class="text-lg font-bold text-gray-800 mb-3">✅ 未確認日報一覧</h2><div class="text-center py-4"><div class="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto"></div></div>';
+  const reports=await api('/api/admin/pending');
+  if(!reports)return;
+  document.getElementById('pendingBadge').textContent=reports.length;
+  if(!reports.length){el.innerHTML='<h2 class="text-lg font-bold text-gray-800 mb-3">✅ 未確認日報一覧</h2><p class="text-gray-500 text-center py-8">全て承認済みです 🎉</p>';return}
+  let html=`<h2 class="text-lg font-bold text-gray-800 mb-3">✅ 未確認日報一覧 (${reports.length}件)</h2>
+    <button onclick="approveAll()" class="btn btn-success w-full mb-3"><i class="fas fa-check-double mr-2"></i>全て承認</button>`;
+  for(const r of reports){
+    html+=`<div class="card" id="pending-${r.id}">
+      <div class="flex items-center justify-between mb-2">
+        <div><span class="font-bold text-sm">${fmtDate(r.report_date)}</span> <span class="text-blue-600 text-sm">${r.reporter_name}</span></div>
+        <button onclick="approveOne(${r.id})" class="btn btn-success text-xs px-3 py-1"><i class="fas fa-check mr-1"></i>確認</button>
+      </div>
+      <div class="text-xs text-gray-600">${r.job_code||'-'} | ${r.work_factory||''} ${r.work_office||''}</div>
+      <div class="text-xs text-gray-500">勤怠: ${r.attendance1}h+${r.attendance2}h ${r.detail?'| '+r.detail.substring(0,30):''}</div>
+    </div>`;
+  }
+  el.innerHTML=html;
+}
+
+async function approveOne(id){
+  const r=await api('/api/admin/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({report_ids:[id]})});
+  if(r?.success){toast('承認しました');document.getElementById('pending-'+id)?.remove();updatePendingBadge()}
+}
+
+async function approveAll(){
+  const reports=await api('/api/admin/pending');
+  if(!reports||!reports.length)return;
+  const ids=reports.map(r=>r.id);
+  const r=await api('/api/admin/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({report_ids:ids})});
+  if(r?.success){toast(`${r.approved}件を承認しました`);loadPending()}
+}
+
+async function updatePendingBadge(){
+  if(currentUser?.role!=='admin')return;
+  const reports=await api('/api/admin/pending');
+  if(reports)document.getElementById('pendingBadge').textContent=reports.length;
+}
+
+// === Admin ===
+let adminTab='csv';
+function renderAdmin(){
+  const el=document.getElementById('page-admin');
+  el.innerHTML=`
+    <h2 class="text-lg font-bold text-gray-800 mb-3">⚙️ 管理メニュー</h2>
+    <div class="flex gap-2 mb-3 overflow-x-auto">
+      <button class="btn ${adminTab==='csv'?'btn-primary':'btn-outline'} text-xs px-3" onclick="adminTab='csv';renderAdmin()">CSV出力</button>
+      <button class="btn ${adminTab==='jobs'?'btn-primary':'btn-outline'} text-xs px-3" onclick="adminTab='jobs';renderAdmin()">工番マスタ</button>
+      <button class="btn ${adminTab==='users'?'btn-primary':'btn-outline'} text-xs px-3" onclick="adminTab='users';renderAdmin()">アカウント</button>
+      <button class="btn ${adminTab==='passkey'?'btn-primary':'btn-outline'} text-xs px-3" onclick="adminTab='passkey';renderAdmin()">パスキー</button>
+    </div>
+    <div id="adminContent"></div>`;
+  if(adminTab==='csv')renderCSV();
+  else if(adminTab==='jobs')loadJobs();
+  else if(adminTab==='users')loadUsers();
+  else if(adminTab==='passkey')renderPasskey();
+}
+
+function renderCSV(){
+  document.getElementById('adminContent').innerHTML=`
+    <div class="card">
+      <h3 class="font-bold text-sm mb-3">📥 承認済みデータ CSV出力</h3>
+      <div class="grid grid-cols-2 gap-3 mb-3">
+        <div><label class="text-xs text-gray-500">開始日</label><input type="date" id="csvStart" class="input" value="${today().substring(0,8)+'01'}"></div>
+        <div><label class="text-xs text-gray-500">終了日</label><input type="date" id="csvEnd" class="input" value="${today()}"></div>
+      </div>
+      <button onclick="downloadCSV()" class="btn btn-success w-full"><i class="fas fa-download mr-2"></i>CSVダウンロード</button>
+    </div>`;
+}
+
+function downloadCSV(){
+  const s=document.getElementById('csvStart').value, e=document.getElementById('csvEnd').value;
+  if(!s||!e){toast('期間を指定してください');return}
+  window.open(B+'/api/admin/csv?start='+s+'&end='+e,'_blank');
+}
+
+async function loadJobs(){
+  const jobs=await api('/api/job-numbers');
+  if(!jobs)return;
+  let html=`<div class="card">
+    <h3 class="font-bold text-sm mb-3">🔢 工番マスタ管理</h3>
+    <div class="flex gap-2 mb-3">
+      <input type="text" id="newJobCode" class="input flex-1" placeholder="工番コード">
+      <input type="text" id="newJobName" class="input flex-1" placeholder="工番名称">
+      <button onclick="addJob()" class="btn btn-primary px-4"><i class="fas fa-plus"></i></button>
+    </div>`;
+  for(const j of jobs){
+    html+=`<div class="flex items-center gap-2 py-2 border-b text-sm">
+      <span class="font-mono font-bold ${j.active?'':'text-gray-400 line-through'}">${j.code}</span>
+      <span class="text-gray-600 flex-1 truncate">${j.name}</span>
+      <button onclick="toggleJob(${j.id},${j.active?0:1})" class="text-xs ${j.active?'text-red-500':'text-green-600'}">${j.active?'無効化':'有効化'}</button>
+    </div>`;
+  }
+  html+='</div>';
+  document.getElementById('adminContent').innerHTML=html;
+}
+
+async function addJob(){
+  const code=document.getElementById('newJobCode').value.trim(),name=document.getElementById('newJobName').value.trim();
+  if(!code){toast('工番コードを入力');return}
+  const r=await api('/api/job-numbers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,name})});
+  if(r?.success){toast('追加しました');loadJobs()}else toast(r?.error||'エラー');
+}
+
+async function toggleJob(id,active){
+  await api('/api/job-numbers/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({active})});
+  loadJobs();
+}
+
+async function loadUsers(){
+  const users=await api('/api/admin/users');
+  if(!users)return;
+  let html=`<div class="card">
+    <h3 class="font-bold text-sm mb-3">👥 アカウント管理</h3>
+    <button onclick="showAddUser()" class="btn btn-primary w-full mb-3"><i class="fas fa-user-plus mr-2"></i>新規アカウント</button>`;
+  for(const u of users){
+    html+=`<div class="flex items-center gap-2 py-2 border-b text-sm">
+      <div class="flex-1">
+        <div class="font-bold ${u.active?'':'text-gray-400'}">${u.display_name} <span class="text-xs px-2 py-0.5 rounded-full ${u.role==='admin'?'bg-purple-100 text-purple-700':'bg-gray-100 text-gray-600'}">${u.role==='admin'?'管理者':'報告者'}</span></div>
+        <div class="text-xs text-gray-500">${u.email}</div>
+      </div>
+      <button onclick="toggleUser(${u.id},${u.active?0:1})" class="text-xs ${u.active?'text-red-500':'text-green-600'}">${u.active?'無効':'有効'}</button>
+    </div>`;
+  }
+  html+='</div>';
+  document.getElementById('adminContent').innerHTML=html;
+}
+
+function showAddUser(){
+  document.getElementById('modalContainer').innerHTML=`
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal-content">
+        <h3 class="text-lg font-bold mb-4">👤 新規アカウント</h3>
+        <div class="space-y-3">
+          <div><label class="text-xs text-gray-500">表示名</label><input type="text" id="nuName" class="input" placeholder="例: 山田太郎"></div>
+          <div><label class="text-xs text-gray-500">メールアドレス</label><input type="email" id="nuEmail" class="input" placeholder="email@example.com"></div>
+          <div><label class="text-xs text-gray-500">パスワード</label><input type="password" id="nuPass" class="input" placeholder="6文字以上"></div>
+          <div><label class="text-xs text-gray-500">権限</label><select id="nuRole" class="input"><option value="reporter">報告者</option><option value="admin">管理者</option></select></div>
+        </div>
+        <div class="flex gap-3 mt-4">
+          <button onclick="closeModal()" class="btn btn-outline flex-1">キャンセル</button>
+          <button onclick="createUser()" class="btn btn-primary flex-1">作成</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function createUser(){
+  const r=await api('/api/admin/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    display_name:document.getElementById('nuName').value,email:document.getElementById('nuEmail').value,
+    password:document.getElementById('nuPass').value,role:document.getElementById('nuRole').value
+  })});
+  if(r?.success){closeModal();toast('作成しました');loadUsers()}else toast(r?.error||'エラー');
+}
+
+async function toggleUser(id,active){
+  await api('/api/admin/users/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({active})});
+  loadUsers();
+}
+
+// === Passkey ===
+function renderPasskey(){
+  document.getElementById('adminContent').innerHTML=`
+    <div class="card">
+      <h3 class="font-bold text-sm mb-3">🔐 パスキー登録</h3>
+      <p class="text-xs text-gray-500 mb-3">Face ID / Touch ID / 指紋認証でログインできるようになります</p>
+      <button onclick="registerPasskey()" class="btn btn-primary w-full"><i class="fas fa-fingerprint mr-2"></i>パスキーを登録</button>
+      <div id="passkeyStatus" class="mt-3 text-sm"></div>
+    </div>`;
+}
+
+async function registerPasskey(){
+  try{
+    if(!window.PublicKeyCredential){toast('このブラウザはパスキー非対応');return}
+    const optRes=await fetch(B+'/api/passkey/register-options',{method:'POST',headers:{'Content-Type':'application/json'}});
+    const options=await optRes.json();
+    options.challenge=base64urlToBuffer(options.challenge);
+    options.user.id=base64urlToBuffer(options.user.id);
+    if(options.excludeCredentials)options.excludeCredentials=options.excludeCredentials.map(c=>({...c,id:base64urlToBuffer(c.id)}));
+    const credential=await navigator.credentials.create({publicKey:options});
+    const body={
+      id:credential.id,rawId:bufferToBase64url(credential.rawId),type:credential.type,
+      response:{clientDataJSON:bufferToBase64url(credential.response.clientDataJSON),
+        attestationObject:bufferToBase64url(credential.response.attestationObject),
+        transports:credential.response.getTransports?.()},
+      clientExtensionResults:credential.getClientExtensionResults()
+    };
+    const r=await fetch(B+'/api/passkey/register-verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.success){toast('パスキーを登録しました');document.getElementById('passkeyStatus').innerHTML='<span class="text-green-600">✅ 登録済み</span>'}
+    else toast(d.error||'登録失敗');
+  }catch(e){toast('パスキーエラー: '+e.message)}
+}
+
+function base64urlToBuffer(b){const s=b.replace(/-/g,'+').replace(/_/g,'/');const r=atob(s);const a=new Uint8Array(r.length);for(let i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a.buffer}
+function bufferToBase64url(b){const a=new Uint8Array(b);let s='';a.forEach(v=>s+=String.fromCharCode(v));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'')}
+
+// === Settings Modal ===
+function showSettings(){
+  document.getElementById('modalContainer').innerHTML=`
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal-content">
+        <h3 class="text-lg font-bold mb-4">⚙️ 設定</h3>
+        <div class="space-y-3">
+          <div class="flex items-center justify-between py-2 border-b"><span class="text-sm">ユーザー</span><span class="text-sm font-bold">${currentUser?.display_name}</span></div>
+          <div class="flex items-center justify-between py-2 border-b"><span class="text-sm">メール</span><span class="text-sm text-gray-600">${currentUser?.email}</span></div>
+          <div class="flex items-center justify-between py-2 border-b"><span class="text-sm">権限</span><span class="text-sm">${currentUser?.role==='admin'?'管理者':'報告者'}</span></div>
+        </div>
+        <button onclick="logout()" class="btn btn-danger w-full mt-4"><i class="fas fa-sign-out-alt mr-2"></i>ログアウト</button>
+        <button onclick="closeModal()" class="btn btn-outline w-full mt-2">閉じる</button>
+      </div>
+    </div>`;
+}
+
+async function logout(){
+  await api('/api/auth/logout',{method:'POST'});
+  location.href=B+'/login';
+}
+
+// === Init ===
+(async()=>{
+  const r=await api('/api/auth/me');
+  if(!r||!r.logged_in){location.href=B+'/login';return}
+  currentUser=r.user;
+  document.getElementById('headerUser').textContent=currentUser.display_name;
+  if(currentUser.role==='admin'){
+    document.getElementById('navPending').style.display='';
+    document.getElementById('navAdmin').style.display='';
+    updatePendingBadge();
+  }
+  showPage('report');
+})();
+</script>
+</body>
+</html>
